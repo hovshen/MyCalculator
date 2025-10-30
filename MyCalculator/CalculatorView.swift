@@ -144,23 +144,23 @@ struct CalculatorButtonView: View {
         }
         .background(backgroundColor)
         .foregroundColor(foregroundColor)
-        .clipShape(span == 2 ? AnyShape(Capsule()) : AnyShape(Circle()))
-        .contentShape(span == 2 ? AnyShape(Capsule()) : AnyShape(Circle()))
+        .modifier(CalculatorButtonShape(span: span))
         .buttonStyle(.plain)
     }
 }
 
-// 讓 AnyShape 可以被使用 (保持不變)
-struct AnyShape: Shape {
-    private let _path: (CGRect) -> Path
+private struct CalculatorButtonShape: ViewModifier {
+    var span: Int
 
-    init<S: Shape>(_ shape: S) {
-        _path = { rect in
-            shape.path(in: rect)
+    func body(content: Content) -> some View {
+        if span == 2 {
+            content
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        } else {
+            content
+                .clipShape(Circle())
+                .contentShape(Circle())
         }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        _path(rect)
     }
 }
