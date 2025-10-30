@@ -7,18 +7,12 @@ struct GeminiSolverClient {
     }
 
     struct Configuration {
-        private static let fallbackAPIKey = "AIzaSyBlcA7MPvTV7gnkdh1vKLGSXI_2e3z4xYo"
-
         let apiKey: String
         let endpoint: URL
 
         init(apiKey: String? = ProcessInfo.processInfo.environment["GEMINI_API_KEY"],
              endpoint: URL = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")!) {
-            if let apiKey, !apiKey.isEmpty {
-                self.apiKey = apiKey
-            } else {
-                self.apiKey = Self.fallbackAPIKey
-            }
+            self.apiKey = apiKey ?? ""
             self.endpoint = endpoint
         }
     }
