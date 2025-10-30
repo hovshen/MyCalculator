@@ -12,6 +12,9 @@ enum CalculatorMode: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @State private var selectedMode: CalculatorMode = .standard
 
+    private let fixedWidth: CGFloat = 720
+    private let fixedHeight: CGFloat = 900
+
     var body: some View {
         VStack(spacing: 0) {
             
@@ -40,59 +43,266 @@ struct ContentView: View {
 
             
             // --- 內容切換 ---
-            switch selectedMode {
-            case .standard:
-                CalculatorView()
-                    .frame(minWidth: 700, minHeight: 450)
-            case .twoVar:
-                EquationSolverView(mode: .twoVar)
-                    .frame(minWidth: 400, minHeight: 450)
-            case .threeVar:
-                EquationSolverView(mode: .threeVar)
-                    .frame(minWidth: 450, minHeight: 500)
+            Group {
+                switch selectedMode {
+                case .standard:
+                    CalculatorView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .twoVar:
+                    EquationSolverView(mode: .twoVar)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .threeVar:
+                    EquationSolverView(mode: .threeVar)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-            
-            Spacer()
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
+        .frame(width: fixedWidth, height: fixedHeight)
         .background(Color.black.edgesIgnoringSafeArea(.all))
     }
 }
 
 
-// --- 方程式求解器的佔位視圖 (保持不變) ---
+// --- 方程式求解器視圖 ---
 struct EquationSolverView: View {
     var mode: CalculatorMode
-    
+
+    @State private var coefficients: [[String]]
+    @State private var constants: [String]
+    @State private var solution: [Double]? = nil
+    @State private var errorMessage: String? = nil
+
+    private let fieldWidth: CGFloat = 70
+
+    init(mode: CalculatorMode) {
+        self.mode = mode
+        let variableCount = mode == .twoVar ? 2 : 3
+        _coefficients = State(initialValue: Array(repeating: Array(repeating: "", count: variableCount), count: variableCount))
+        _constants = State(initialValue: Array(repeating: "", count: variableCount))
+    }
+
     var body: some View {
-        VStack {
+        VStack(alignment: .leading, spacing: 24) {
             Text(mode.rawValue)
-                .font(.largeTitle)
+                .font(.system(size: 28, weight: .bold))
                 .foregroundColor(.white)
-            
-            Text("即將推出！")
-                .font(.title2)
-                .foregroundColor(.gray)
-                .padding()
-            
-            Text("範例輸入框 (未來實作):")
-                .foregroundColor(.white.opacity(0.5))
-            
-            HStack {
-                TextField("a", text: .constant(""))
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(width: 50)
-                Text("x +").foregroundColor(.white)
-                TextField("b", text: .constant(""))
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(width: 50)
-                Text("y =").foregroundColor(.white)
-                TextField("c", text: .constant(""))
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(width: 50)
+
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(coefficients.indices, id: \.self) { row in
+                    equationRow(for: row)
+                }
             }
-            .padding()
+
+            HStack(spacing: 16) {
+                Button(action: solveSystem) {
+                    Text("計算")
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.vertical, 10)
+                        .frame(width: 120)
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+
+                Button(action: clearInputs) {
+                    Text("清除")
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.vertical, 10)
+                        .frame(width: 120)
+                        .background(Color(hex: "505050"))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+            }
+
+            if let solution = solution {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("解答")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+
+                    ForEach(solution.indices, id: \.self) { index in
+                        Text("\(variableSymbols[index]) = \(formatSolution(solution[index]))")
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+                    .font(.system(size: 15, weight: .medium))
+            }
+
+            Spacer()
         }
-        // *** 新增 *** 讓這個佔位視圖填滿空間
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.black)
+    }
+
+    private var variableSymbols: [String] {
+        switch mode {
+        case .twoVar: return ["x", "y"]
+        case .threeVar: return ["x", "y", "z"]
+        default: return []
+        }
+    }
+
+    @ViewBuilder
+    private func equationRow(for row: Int) -> some View {
+        let lastColumnIndex = coefficients[row].count - 1
+
+        HStack(spacing: 8) {
+            ForEach(coefficients[row].indices, id: \.self) { column in
+                EquationInputField(text: $coefficients[row][column], placeholder: "0", width: fieldWidth)
+
+                Text(variableSymbols[column])
+                    .foregroundColor(.white)
+                    .font(.system(size: 18, weight: .medium))
+
+                if column < lastColumnIndex {
+                    Text("+")
+                        .foregroundColor(.white)
+                        .font(.system(size: 18, weight: .medium))
+                } else {
+                    Text("=")
+                        .foregroundColor(.white)
+                        .font(.system(size: 18, weight: .medium))
+                }
+            }
+
+            EquationInputField(text: $constants[row], placeholder: "0", width: fieldWidth)
+        }
+    }
+
+    private func solveSystem() {
+        errorMessage = nil
+        solution = nil
+
+        do {
+            let numericCoefficients = try coefficients.map { row in
+                try row.map { try parseValue($0) }
+            }
+            let numericConstants = try constants.map { try parseValue($0) }
+
+            guard let answers = gaussianElimination(coefficients: numericCoefficients, constants: numericConstants) else {
+                errorMessage = "此聯立方程式沒有唯一解。"
+                return
+            }
+
+            solution = answers
+        } catch let parseError as EquationInputError {
+            switch parseError {
+            case .invalidNumber:
+                errorMessage = "請輸入有效的數字。"
+            }
+        } catch {
+            errorMessage = "發生未知錯誤。"
+        }
+    }
+
+    private func clearInputs() {
+        for row in coefficients.indices {
+            for column in coefficients[row].indices {
+                coefficients[row][column] = ""
+            }
+        }
+        for index in constants.indices {
+            constants[index] = ""
+        }
+        solution = nil
+        errorMessage = nil
+    }
+
+    private func parseValue(_ text: String) throws -> Double {
+        guard let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw EquationInputError.invalidNumber
+        }
+        return value
+    }
+
+    private func gaussianElimination(coefficients: [[Double]], constants: [Double]) -> [Double]? {
+        let n = constants.count
+        guard coefficients.count == n else { return nil }
+        var augmentedMatrix = coefficients
+        var resultVector = constants
+
+        for pivot in 0..<n {
+            var maxRow = pivot
+            var maxValue = abs(augmentedMatrix[pivot][pivot])
+
+            for row in (pivot + 1)..<n {
+                let candidate = abs(augmentedMatrix[row][pivot])
+                if candidate > maxValue {
+                    maxValue = candidate
+                    maxRow = row
+                }
+            }
+
+            if maxValue < 1e-10 {
+                return nil
+            }
+
+            if maxRow != pivot {
+                augmentedMatrix.swapAt(pivot, maxRow)
+                resultVector.swapAt(pivot, maxRow)
+            }
+
+            let pivotValue = augmentedMatrix[pivot][pivot]
+            for column in pivot..<n {
+                augmentedMatrix[pivot][column] /= pivotValue
+            }
+            resultVector[pivot] /= pivotValue
+
+            for row in 0..<n where row != pivot {
+                let factor = augmentedMatrix[row][pivot]
+                if abs(factor) < 1e-12 { continue }
+                for column in pivot..<n {
+                    augmentedMatrix[row][column] -= factor * augmentedMatrix[pivot][column]
+                }
+                resultVector[row] -= factor * resultVector[pivot]
+            }
+        }
+
+        return resultVector
+    }
+
+    private func formatSolution(_ value: Double) -> String {
+        if value.isNaN { return "錯誤" }
+        if value.isInfinite { return value > 0 ? "無限" : "-無限" }
+
+        let formatter = NumberFormatter()
+        formatter.maximumFractionDigits = 8
+        formatter.minimumFractionDigits = 0
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
+
+    private enum EquationInputError: Error {
+        case invalidNumber
+    }
+}
+
+// --- 自訂輸入欄位 ---
+private struct EquationInputField: View {
+    @Binding var text: String
+    var placeholder: String
+    var width: CGFloat
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .foregroundColor(.white)
+            .padding(.vertical, 6)
+            .frame(width: width)
+            .background(Color(hex: "1E1E1E"))
+            .cornerRadius(8)
+            .multilineTextAlignment(.center)
+#if os(iOS)
+            .keyboardType(.numbersAndPunctuation)
+#endif
     }
 }
